@@ -46,9 +46,11 @@ public static class CatalogClientServiceCollectionExtensions
                 options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(2);
                 options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(10);
 
+                // Retries absorb partial failure (for example 50% chaos); the circuit only opens when Catalog is
+                // failing almost every attempt, so callers fail fast instead of piling up on a dead dependency.
                 options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
-                options.CircuitBreaker.FailureRatio = 0.5;
-                options.CircuitBreaker.MinimumThroughput = 5;
+                options.CircuitBreaker.FailureRatio = 0.8;
+                options.CircuitBreaker.MinimumThroughput = 10;
                 options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(15);
                 options.CircuitBreaker.OnOpened = args =>
                 {
