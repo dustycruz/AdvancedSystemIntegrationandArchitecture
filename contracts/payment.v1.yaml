@@ -1,0 +1,236 @@
+openapi: 3.0.3
+info:
+  title: Payment API
+  version: v1
+  description: |
+    Payment service of the Store Platform. Records charges and refunds for
+    orders. Charges and refunds are driven by the order saga over RabbitMQ:
+    Payment consumes `ChargePaymentRequested` and `RefundPaymentRequested` and
+    publishes `PaymentCharged`, `PaymentFailed` and `PaymentRefunded` on the
+    `store.events` exchange.
+
+    Through the gateway these operations are exposed under `/payments/v1/...`.
+    Every operation requires a JWT with the `Admin` role.
+
+    The failure mode switch makes the service decline every charge
+    (`DeclineCharge`) so the saga's compensation can be demonstrated without
+    code changes or restarts.
+  contact:
+    name: Laurence Mirandilla
+servers:
+  - url: http://localhost:5005
+    description: Payment service, direct (development Swagger)
+  - url: http://localhost:5000/payments
+    description: Through the Ocelot gateway (path prefix rewritten by the gateway)
+security:
+  - bearerAuth: []
+tags:
+  - name: Payments
+    description: Charges and refunds
+  - name: Admin
+    description: Failure mode switch for saga demonstrations
+paths:
+  /api/v1/payments:
+    get:
+      tags: [Payments]
+      operationId: ListPayments
+      summary: List payments, newest first (Admin)
+      responses:
+        '200':
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/payments/by-order/{orderId}:
+    parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Payments]
+      operationId: GetPaymentByOrderId
+      summary: Get the payment recorded for an order (Admin)
+      responses:
+        '200':
+          description: The payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/failure-mode:
+    get:
+      tags: [Admin]
+      operationId: GetPaymentFailureMode
+      summary: Read the payment failure mode (Admin)
+      responses:
+        '200':
+          description: Current failure mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentFailureModeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Admin]
+      operationId: SetPaymentFailureMode
+      summary: Change the payment failure mode (Admin)
+      description: |
+        `DeclineCharge` makes every following charge fail with a
+        `PaymentFailed` event; `None` restores normal behaviour. The setting is
+        stored in the Payment database, so it survives restarts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentFailureModeRequest'
+      responses:
+        '200':
+          description: Failure mode applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentFailureModeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by the Identity service (`POST /identity/v1/auth/login`)
+  schemas:
+    PaymentStatus:
+      type: string
+      enum: [Charged, Declined, Refunded]
+    PaymentResponse:
+      type: object
+      required: [id, orderId, customerId, amount, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        failureReason:
+          type: string
+          nullable: true
+        refundReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PaymentFailureMode:
+      type: string
+      enum: [None, DeclineCharge]
+    PaymentFailureModeRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/PaymentFailureMode'
+    PaymentFailureModeResponse:
+      type: object
+      required: [mode, updatedAt]
+      properties:
+        mode:
+          $ref: '#/components/schemas/PaymentFailureMode'
+        updatedAt:
+          type: string
+          format: date-time
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details. Every error carries the request's correlationId.
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: {}
+  responses:
+    BadRequest:
+      description: The request failed validation (for example an unknown mode)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: The JWT does not carry the Admin role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: No payment has been recorded for the order
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
