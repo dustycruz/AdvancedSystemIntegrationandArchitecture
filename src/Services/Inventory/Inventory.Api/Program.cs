@@ -43,6 +43,7 @@ builder.Services.AddRabbitMqMessaging(builder.Configuration);
 builder.Services.AddEventConsumer<OrderPlaced, OrderPlacedHandler>(InventoryQueues.OrderPlaced);
 builder.Services.AddEventConsumer<StockReleaseRequested, StockReleaseRequestedHandler>(InventoryQueues.StockReleaseRequested);
 builder.Services.AddEventConsumer<OrderConfirmed, OrderConfirmedHandler>(InventoryQueues.OrderConfirmed);
+builder.Services.AddEventConsumer<OrderCancelled, OrderCancelledHandler>(InventoryQueues.OrderCancelled);
 
 // Catalog is called synchronously through the generated client with a resilience pipeline.
 builder.Services.AddCatalogClient(builder.Configuration);
