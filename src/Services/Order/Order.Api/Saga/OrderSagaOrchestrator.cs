@@ -65,7 +65,8 @@ public sealed class OrderSagaOrchestrator(
             saga.ChargedAmount = message.Amount;
             order.ChangeStatus(OrderStatus.PaymentCharged, $"Payment of {FormatAmount(message.Amount)} charged", now);
 
-            var settings = await db.Settings.AsNoTracking().FirstOrDefaultAsync(ct);
+            var settings = await db.Settings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == OrderSettings.SingletonId, ct);
             if (settings?.FailureMode == OrderFailureMode.FailAfterPayment)
             {
                 const string reason = "Order processing failed after payment (failure mode FailAfterPayment is on)";
