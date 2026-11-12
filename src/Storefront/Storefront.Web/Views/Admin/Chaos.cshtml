@@ -1,0 +1,106 @@
+@model ChaosViewModel
+@{
+    ViewData["Title"] = "Chaos & Saga Testing";
+    var paymentOn = Model.PaymentMode != PaymentFailureMode.None;
+    var orderOn = Model.OrderMode != OrderFailureMode.None;
+    var chaosPercent = (int)Math.Round((Model.CatalogChaos?.FailureRate ?? 0) * 100);
+}
+<h1 class="h2 mb-1">Chaos &amp; Saga Testing</h1>
+<p class="text-muted mb-4">Switch failures on and off without code changes or restarts, then place an order as a customer and watch the saga compensate.</p>
+
+<div class="row g-4">
+    <div class="col-md-6 col-xl-4">
+        <section class="ac-card switch-card p-4 h-100 @(paymentOn ? "is-on" : "is-off")" aria-labelledby="pay-title">
+            <h2 id="pay-title" class="h5"><i class="bi bi-credit-card me-2" aria-hidden="true"></i>Payment failure</h2>
+            <p class="small text-muted">PUT /payments/v1/admin/failure-mode</p>
+            <p>Current mode: <strong>@Model.PaymentMode</strong></p>
+            <p class="small">DeclineCharge makes every charge fail: the saga releases the reserved stock and cancels the order. Nothing is charged.</p>
+            <form asp-action="SetPaymentMode" method="post">
+                <input type="hidden" name="mode" value="@(paymentOn ? PaymentFailureMode.None : PaymentFailureMode.DeclineCharge)" />
+                <button type="submit" class="btn @(paymentOn ? "btn-success" : "btn-danger") w-100">
+                    <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span>
+                    <span class="btn-label">@(paymentOn ? "Turn off (None)" : "Turn on DeclineCharge")</span>
+                </button>
+            </form>
+        </section>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <section class="ac-card switch-card p-4 h-100 @(orderOn ? "is-on" : "is-off")" aria-labelledby="ord-title">
+            <h2 id="ord-title" class="h5"><i class="bi bi-receipt me-2" aria-hidden="true"></i>Failure after payment</h2>
+            <p class="small text-muted">PUT /orders/v1/admin/failure-mode</p>
+            <p>Current mode: <strong>@Model.OrderMode</strong></p>
+            <p class="small">FailAfterPayment fails the order right after a successful charge: the payment is refunded, stock released, and the order cancelled.</p>
+            <form asp-action="SetOrderMode" method="post">
+                <input type="hidden" name="mode" value="@(orderOn ? OrderFailureMode.None : OrderFailureMode.FailAfterPayment)" />
+                <button type="submit" class="btn @(orderOn ? "btn-success" : "btn-danger") w-100">
+                    <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span>
+                    <span class="btn-label">@(orderOn ? "Turn off (None)" : "Turn on FailAfterPayment")</span>
+                </button>
+            </form>
+        </section>
+    </div>
+    <div class="col-md-12 col-xl-4">
+        <section class="ac-card switch-card p-4 h-100 @(chaosPercent > 0 || Model.CatalogChaos?.DelayMs > 0 ? "is-on" : "is-off")" aria-labelledby="chaos-title">
+            <h2 id="chaos-title" class="h5"><i class="bi bi-lightning-charge me-2" aria-hidden="true"></i>Catalog chaos</h2>
+            <p class="small text-muted">PUT /catalog/v1/chaos (Development only)</p>
+            @if (Model.CatalogChaos is null)
+            {
+                <p class="small">The chaos switch is only available when Catalog runs in the Development environment.</p>
+            }
+            else
+            {
+                <p class="small">Injects 503s and delay into product reads. Order and Inventory retry with backoff and jitter; heavy failure opens their circuit breaker.</p>
+                <form asp-action="SetCatalogChaos" method="post">
+                    <label for="failurePercent" class="form-label">Failure rate: <output id="failureOut" for="failurePercent">@chaosPercent</output>%</label>
+                    <input id="failurePercent" name="failurePercent" type="range" class="form-range" min="0" max="100" step="10" value="@chaosPercent"
+                           oninput="document.getElementById('failureOut').value=this.value" />
+                    <label for="delayMs" class="form-label mt-2">Delay (ms)</label>
+                    <input id="delayMs" name="delayMs" type="number" class="form-control" min="0" max="30000" step="100" value="@Model.CatalogChaos.DelayMs" />
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="submit" class="btn btn-danger flex-grow-1"><span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span><span class="btn-label">Apply</span></button>
+                    </div>
+                </form>
+                <form asp-action="SetCatalogChaos" method="post" class="mt-2">
+                    <input type="hidden" name="failurePercent" value="0" /><input type="hidden" name="delayMs" value="0" />
+                    <button type="submit" class="btn btn-outline-success w-100">Reset (no faults)</button>
+                </form>
+            }
+        </section>
+    </div>
+</div>
+
+<section class="ac-card p-4 mt-4" aria-labelledby="demo-title">
+    <h2 id="demo-title" class="h5">Demo scenarios</h2>
+    <ol class="mb-0">
+        <li><strong>Happy path</strong> - all switches off, a customer orders any product: Pending → Stock reserved → Payment charged → Confirmed.</li>
+        <li><strong>Insufficient stock</strong> - a customer orders 2 × "Varsity Jacket - Limited Edition" (stock 1): Cancelled, nothing charged.</li>
+        <li><strong>Payment declined</strong> - DeclineCharge on: stock released, Cancelled.</li>
+        <li><strong>Failure after payment</strong> - FailAfterPayment on: refunded, stock released, Cancelled.</li>
+        <li><strong>Retry under faults</strong> - Catalog chaos at 50%: orders still succeed thanks to retries.</li>
+    </ol>
+</section>
+
+<section class="ac-card p-0 mt-4 table-responsive" aria-labelledby="recent-title">
+    <h2 id="recent-title" class="h5 p-4 pb-0">Recent orders</h2>
+    @if (Model.RecentOrders.Count == 0)
+    {
+        <p class="p-4 text-muted mb-0">No orders yet.</p>
+    }
+    else
+    {
+        <table class="table align-middle mb-0">
+            <thead><tr><th scope="col" class="ps-4">Order</th><th scope="col">Customer</th><th scope="col">Status</th><th scope="col" class="text-end pe-4">Total</th></tr></thead>
+            <tbody>
+                @foreach (var o in Model.RecentOrders)
+                {
+                    <tr>
+                        <td class="ps-4"><a asp-controller="Orders" asp-action="Details" asp-route-id="@o.Id">#@o.Id.ToString()[..8]</a></td>
+                        <td class="small">@o.CustomerEmail</td>
+                        <td><span class="status-pill status-@o.Status">@Display.StatusLabel(o.Status)</span></td>
+                        <td class="text-end pe-4">@Display.Money(o.TotalAmount)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
