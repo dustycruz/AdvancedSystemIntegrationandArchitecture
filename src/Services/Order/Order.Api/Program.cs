@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Order.Api.Clients.Catalog;
 using Order.Api.Data;
 using Order.Api.Infrastructure;
+using Order.Api.Saga;
 using Order.Api.Services;
 using Store.Messaging;
 using Store.Observability;
@@ -40,6 +41,7 @@ builder.Services.AddStoreJwtAuthentication(builder.Configuration);
 builder.Services.AddRabbitMqMessaging(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<OrderPlacementService>();
+builder.Services.AddScoped<OrderSagaOrchestrator>();
 
 // Catalog is called synchronously through the generated client with a resilience pipeline.
 builder.Services.AddCatalogClient(builder.Configuration);
