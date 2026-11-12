@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Store.Messaging</RootNamespace>
+    <Description>RabbitMQ plumbing shared by the Store Platform services: connection, publisher confirms, manual-ack consumers, dead-letter topology and idempotent processing.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Store.Contracts.Events\Store.Contracts.Events.csproj" />
+  </ItemGroup>
+
+</Project>
