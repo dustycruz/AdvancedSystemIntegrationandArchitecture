@@ -54,6 +54,8 @@ public sealed class ProductsController(CatalogDbContext db, ILogger<ProductsCont
     {
         var product = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId, cancellationToken)
             ?? throw new NotFoundException($"Product {productId} does not exist.");
+        logger.LogInformation("Served product {ProductId} {Sku} (price {Price}, active {IsActive})",
+            product.Id, product.Sku, product.Price, product.IsActive);
         return Ok(ProductResponse.From(product));
     }
 
