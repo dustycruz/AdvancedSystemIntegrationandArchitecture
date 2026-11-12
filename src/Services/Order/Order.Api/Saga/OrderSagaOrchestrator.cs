@@ -20,8 +20,9 @@ namespace Order.Api.Saga;
 /// Declined:     StockReserved → Compensating → release stock → Cancelled
 /// After charge: PaymentCharged → Compensating → refund → release stock → Cancelled
 /// </code>
-/// A reply that does not match the step the saga is waiting for (a duplicate, or one that arrives after
-/// the order already finished) is acknowledged and ignored, so the saga never moves backwards.
+/// A reply for a step the saga has already passed (a duplicate, or one that arrives after the order finished)
+/// is acknowledged and ignored, so the saga never moves backwards. A reply that arrives before the previous
+/// step has committed is retried (<see cref="SagaStepNotReadyException"/>).
 /// </summary>
 public sealed class OrderSagaOrchestrator(
     OrderDbContext db,
@@ -150,13 +151,22 @@ public sealed class OrderSagaOrchestrator(
 
             if (order is null || saga is null)
             {
-                logger.LogWarning("{MessageType} refers to unknown order {OrderId}; ignoring it", messageType, message.OrderId);
-                return;
+                // The order is published before its transaction commits; give the commit a moment.
+                // A truly unknown order ends in the queue's .dlq after the last attempt.
+                throw new SagaStepNotReadyException(
+                    $"{messageType} refers to order {message.OrderId}, which is not stored yet; retrying.");
+            }
+
+            if (saga.Step < expectedStep)
+            {
+                // The reply overtook the commit of the previous step: retry instead of dropping it.
+                throw new SagaStepNotReadyException(
+                    $"{messageType} for order {order.Id} arrived while the saga is still at {saga.Step} (expected {expectedStep}); retrying.");
             }
 
             if (saga.Step != expectedStep)
             {
-                logger.LogInformation("Ignoring {MessageType} for order {OrderId}: saga is at {Step}, expected {ExpectedStep}",
+                logger.LogInformation("Ignoring {MessageType} for order {OrderId}: saga is already at {Step}, past {ExpectedStep}",
                     messageType, order.Id, saga.Step, expectedStep);
                 return;
             }
