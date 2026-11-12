@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Storefront.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="NSwag.ApiDescription.Client">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Store.Observability\Store.Observability.csproj" />
+  </ItemGroup>
+
+  <!--
+    Typed clients generated at build time from the five contracts (contract-first). All of them live in one
+    namespace and share one exception type (GatewayApiException) and one ProblemDetails class, generated
+    by the first reference only. Every client is pointed at the gateway (see GatewayRouteHandler).
+  -->
+  <PropertyGroup>
+    <_StoreClientOptions>/GenerateClientInterfaces:true /UseBaseUrl:false /JsonLibrary:SystemTextJson /OperationGenerationMode:SingleClientFromOperationId /GenerateNullableReferenceTypes:true /ExceptionClass:GatewayApiException /DateTimeType:System.DateTimeOffset</_StoreClientOptions>
+  </PropertyGroup>
+  <ItemGroup>
+    <OpenApiReference Include="..\..\..\contracts\catalog.v1.yaml" CodeGenerator="NSwagCSharp"
+                      Namespace="Storefront.Web.Clients" ClassName="CatalogClient"
+                      NSwagGenerateExceptionClasses="true"
+                      Options="$(_StoreClientOptions)" />
+    <OpenApiReference Include="..\..\..\contracts\identity.v1.yaml" CodeGenerator="NSwagCSharp"
+                      Namespace="Storefront.Web.Clients" ClassName="IdentityClient"
+                      Options="$(_StoreClientOptions) /ExcludedTypeNames:ProblemDetails" />
+    <OpenApiReference Include="..\..\..\contracts\inventory.v1.yaml" CodeGenerator="NSwagCSharp"
+                      Namespace="Storefront.Web.Clients" ClassName="InventoryClient"
+                      Options="$(_StoreClientOptions) /ExcludedTypeNames:ProblemDetails" />
+    <OpenApiReference Include="..\..\..\contracts\order.v1.yaml" CodeGenerator="NSwagCSharp"
+                      Namespace="Storefront.Web.Clients" ClassName="OrderClient"
+                      Options="$(_StoreClientOptions) /ExcludedTypeNames:ProblemDetails" />
+    <OpenApiReference Include="..\..\..\contracts\payment.v1.yaml" CodeGenerator="NSwagCSharp"
+                      Namespace="Storefront.Web.Clients" ClassName="PaymentClient"
+                      Options="$(_StoreClientOptions) /ExcludedTypeNames:ProblemDetails" />
+  </ItemGroup>
+
+</Project>
