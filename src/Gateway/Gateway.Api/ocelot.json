@@ -431,6 +431,13 @@
     "BaseUrl": "http://localhost:5000",
     "RequestIdKey": "X-Correlation-ID",
     "RateLimitOptions": {
+      "RouteKeys": [
+        "identity-login"
+      ],
+      "EnableRateLimiting": true,
+      "Period": "1m",
+      "PeriodTimespan": 60,
+      "Limit": 5,
       "ClientIdHeader": "X-Client-Id",
       "QuotaExceededMessage": "Too many login attempts. You can try 5 times per minute - please wait a minute and try again.",
       "HttpStatusCode": 429

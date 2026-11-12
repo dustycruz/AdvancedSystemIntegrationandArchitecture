@@ -50,6 +50,14 @@ var app = builder.Build();
 // downstream (RequestIdKey) and every service propagates it further over HTTP and RabbitMQ.
 app.UseStoreObservability();
 
+// Rate limiting identifies callers by X-Client-Id. The gateway always sets it from the caller's IP address
+// (never trusting a client-supplied value), so the login limit of 5 per minute applies per client address.
+app.Use(async (context, next) =>
+{
+    context.Request.Headers["X-Client-Id"] = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    await next(context);
+});
+
 app.UseRouting();
 #pragma warning disable ASP0014 // Endpoints must run before Ocelot, which terminates the pipeline.
 app.UseEndpoints(endpoints =>
