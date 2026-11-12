@@ -4,8 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using Order.Api.Clients.Catalog;
 using Order.Api.Data;
 using Order.Api.Infrastructure;
+using Order.Api.Messaging;
 using Order.Api.Saga;
 using Order.Api.Services;
+using Store.Contracts.Events;
 using Store.Messaging;
 using Store.Observability;
 
@@ -42,6 +44,14 @@ builder.Services.AddRabbitMqMessaging(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<OrderPlacementService>();
 builder.Services.AddScoped<OrderSagaOrchestrator>();
+
+// Saga replies: one durable queue per event type, manual ack, retries, dead-letter queue, idempotency.
+builder.Services.AddEventConsumer<StockReserved, StockReservedHandler>(OrderQueues.StockReserved);
+builder.Services.AddEventConsumer<StockReservationFailed, StockReservationFailedHandler>(OrderQueues.StockReservationFailed);
+builder.Services.AddEventConsumer<StockReleased, StockReleasedHandler>(OrderQueues.StockReleased);
+builder.Services.AddEventConsumer<PaymentCharged, PaymentChargedHandler>(OrderQueues.PaymentCharged);
+builder.Services.AddEventConsumer<PaymentFailed, PaymentFailedHandler>(OrderQueues.PaymentFailed);
+builder.Services.AddEventConsumer<PaymentRefunded, PaymentRefundedHandler>(OrderQueues.PaymentRefunded);
 
 // Catalog is called synchronously through the generated client with a resilience pipeline.
 builder.Services.AddCatalogClient(builder.Configuration);
