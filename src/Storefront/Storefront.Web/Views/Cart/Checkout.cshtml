@@ -1,0 +1,37 @@
+@model CartViewModel
+@{
+    ViewData["Title"] = "Checkout";
+}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h1 class="h2 mb-4">Checkout</h1>
+        <div class="ac-card p-4">
+            <table class="table align-middle">
+                <caption class="visually-hidden">Items in this order</caption>
+                <thead><tr><th scope="col">Item</th><th scope="col" class="text-end">Qty</th><th scope="col" class="text-end">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var line in Model.Lines)
+                    {
+                        <tr><td>@line.Product.Name</td><td class="text-end">@line.Quantity</td><td class="text-end">@Display.Money(line.LineTotal)</td></tr>
+                    }
+                </tbody>
+                <tfoot><tr><th scope="row" colspan="2">Total</th><td class="text-end price">@Display.Money(Model.Total)</td></tr></tfoot>
+            </table>
+            <div class="alert alert-info small d-flex gap-2" role="note">
+                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                <span>Your order is accepted right away, then stock is reserved and payment is charged in the background. You will see each step live on the next page.</span>
+            </div>
+            @if (!Model.CanCheckout)
+            {
+                <div class="alert alert-warning">Some items need attention. <a asp-action="Index">Back to cart</a></div>
+            }
+            <form asp-action="PlaceOrder" method="post" class="d-flex gap-2 justify-content-end">
+                <a class="btn btn-outline-primary btn-lg" asp-action="Index">Back to cart</a>
+                <button type="submit" class="btn btn-gold btn-lg" disabled="@(!Model.CanCheckout)">
+                    <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span>
+                    <span class="btn-label"><i class="bi bi-bag-check me-1" aria-hidden="true"></i>Place order · @Display.Money(Model.Total)</span>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
