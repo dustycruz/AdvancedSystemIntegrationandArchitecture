@@ -1,0 +1,64 @@
+%% Store Platform Capstone - every module in one deployable system.
+%% Render: npx -y @mermaid-js/mermaid-cli -i docs/architecture.mmd -o docs/architecture.png
+graph LR
+  subgraph compose["Docker Compose"]
+    direction LR
+
+    client["Client / Storefront<br/>ASP.NET Core MVC :5100"]
+    gateway["Ocelot Gateway · JWT<br/>:5000<br/>rate limit · QoS · X-Correlation-ID"]
+
+    identity["Identity<br/>register · login · JWT"]
+    catalog["Catalog<br/>products · prices"]
+    inventory["Inventory<br/>stock · reservations"]
+    order["Order<br/>saga orchestrator"]
+    payment["Payment<br/>charges · refunds"]
+
+    identitydb[("identity_db<br/>:own DB")]
+    catalogdb[("catalog_db<br/>:own DB")]
+    inventorydb[("inventory_db<br/>:own DB")]
+    orderdb[("order_db<br/>:own DB")]
+    paymentdb[("payment_db<br/>:own DB")]
+
+    subgraph mq["RabbitMQ · event bus · publish and consume"]
+      direction TB
+      events{{"store.events<br/>topic exchange"}}
+      dlx{{"store.dlx<br/>dead-letter exchange"}}
+      dlq[".dlq queues<br/>one per consumer queue"]
+      events -. "rejected after 3 attempts" .-> dlx
+      dlx --> dlq
+    end
+
+    client -- "JWT" --> gateway
+    gateway -- "REST" --> identity
+    gateway -- "REST" --> catalog
+    gateway -- "REST" --> inventory
+    gateway -- "REST" --> order
+    gateway -- "REST" --> payment
+
+    order -. "REST · retry, timeout,<br/>circuit breaker" .-> catalog
+    inventory -. "REST · validation" .-> catalog
+
+    identity --- identitydb
+    catalog --- catalogdb
+    inventory --- inventorydb
+    order --- orderdb
+    payment --- paymentdb
+
+    order <== "events<br/>publisher confirms · manual ack" ==> events
+    inventory <== "events" ==> events
+    payment <== "events" ==> events
+  end
+
+  classDef service fill:#0093D8,stroke:#006FA6,color:#FFFFFF
+  classDef edge fill:#C4A20B,stroke:#8C7306,color:#1C1C1B
+  classDef db fill:#1C1C1B,stroke:#1C1C1B,color:#FFFFFF
+  classDef bus fill:#E6F4FB,stroke:#0093D8,color:#1C1C1B
+  classDef ui fill:#FFFFFF,stroke:#006FA6,color:#1C1C1B
+
+  class identity,catalog,inventory,order,payment service
+  class gateway edge
+  class identitydb,catalogdb,inventorydb,orderdb,paymentdb db
+  class events,dlx,dlq bus
+  class client ui
+  style mq fill:#E6F4FB,stroke:#0093D8,color:#1C1C1B
+  style compose fill:#F7F9FB,stroke:#C4A20B,color:#1C1C1B
