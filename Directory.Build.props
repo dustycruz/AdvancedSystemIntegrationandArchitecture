@@ -1,0 +1,16 @@
+<Project>
+  <!--
+    Settings shared by every project in the solution.
+    Dockerfiles copy this file next to the solution before restoring.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- ASPDEPR001: Microsoft.Extensions.ApiDescription.Client is pulled in by
+         NSwag.ApiDescription.Client and is marked deprecated; OpenApiReference
+         client generation still depends on it. -->
+    <NoWarn>$(NoWarn);ASPDEPR001</NoWarn>
+  </PropertyGroup>
+</Project>
