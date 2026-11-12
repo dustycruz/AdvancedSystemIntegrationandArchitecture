@@ -28,7 +28,8 @@ public sealed class ChargePaymentRequestedHandler(
 
             if (payment is null)
             {
-                var settings = await db.Settings.AsNoTracking().FirstOrDefaultAsync(ct);
+                var settings = await db.Settings.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == PaymentSettings.SingletonId, ct);
                 var declined = settings?.FailureMode == PaymentFailureMode.DeclineCharge;
 
                 payment = new Domain.Payment
