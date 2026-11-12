@@ -3,6 +3,9 @@ using Asp.Versioning;
 using Microsoft.EntityFrameworkCore;
 using Payment.Api.Data;
 using Payment.Api.Infrastructure;
+using Payment.Api.Messaging;
+using Store.Contracts.Events;
+using Store.Messaging;
 using Store.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,8 +36,15 @@ builder.Services.AddVersionedSwagger();
 
 builder.Services.AddStoreJwtAuthentication(builder.Configuration);
 
+// Saga participant: durable queue per consumer, manual ack, retries, dead-letter queue, idempotency.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddRabbitMqMessaging(builder.Configuration);
+builder.Services.AddEventConsumer<ChargePaymentRequested, ChargePaymentRequestedHandler>(PaymentQueues.ChargePaymentRequested);
+builder.Services.AddEventConsumer<RefundPaymentRequested, RefundPaymentRequestedHandler>(PaymentQueues.RefundPaymentRequested);
+
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<PaymentDbContext>("payment-db");
+    .AddDbContextCheck<PaymentDbContext>("payment-db")
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq");
 
 var app = builder.Build();
 

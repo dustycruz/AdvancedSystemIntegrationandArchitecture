@@ -3,7 +3,10 @@ using Asp.Versioning;
 using Inventory.Api.Clients.Catalog;
 using Inventory.Api.Data;
 using Inventory.Api.Infrastructure;
+using Inventory.Api.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Store.Contracts.Events;
+using Store.Messaging;
 using Store.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,11 +37,19 @@ builder.Services.AddVersionedSwagger();
 
 builder.Services.AddStoreJwtAuthentication(builder.Configuration);
 
+// Saga participant: durable queue per consumer, manual ack, retries, dead-letter queue, idempotency.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddRabbitMqMessaging(builder.Configuration);
+builder.Services.AddEventConsumer<OrderPlaced, OrderPlacedHandler>(InventoryQueues.OrderPlaced);
+builder.Services.AddEventConsumer<StockReleaseRequested, StockReleaseRequestedHandler>(InventoryQueues.StockReleaseRequested);
+builder.Services.AddEventConsumer<OrderConfirmed, OrderConfirmedHandler>(InventoryQueues.OrderConfirmed);
+
 // Catalog is called synchronously through the generated client with a resilience pipeline.
 builder.Services.AddCatalogClient(builder.Configuration);
 
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<InventoryDbContext>("inventory-db");
+    .AddDbContextCheck<InventoryDbContext>("inventory-db")
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq");
 
 var app = builder.Build();
 
