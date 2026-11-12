@@ -1,0 +1,61 @@
+@model StockViewModel
+@{
+    ViewData["Title"] = "Stock";
+    var unstocked = ViewBag.Unstocked as List<ProductResponse> ?? [];
+}
+<h1 class="h2 mb-1">Stock</h1>
+<p class="text-muted mb-4">Adjustments are validated against the catalog. Reserved units belong to orders that are still in progress.</p>
+<div class="ac-card p-0 table-responsive">
+    <table class="table align-middle mb-0">
+        <caption class="visually-hidden">Stock per product</caption>
+        <thead><tr><th scope="col" class="ps-3">Product</th><th scope="col" class="text-end">On hand</th><th scope="col" class="text-end">Reserved</th><th scope="col" class="text-end">Available</th><th scope="col" class="pe-3">Adjust</th></tr></thead>
+        <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                var s = row.Stock;
+                <tr>
+                    <td class="ps-3">
+                        @s.ProductName
+                        <div class="small text-muted font-monospace">@s.Sku @if (!row.ProductActive) { <span class="badge badge-inactive ms-1">Inactive</span> }</div>
+                    </td>
+                    <td class="text-end">@s.QuantityOnHand</td>
+                    <td class="text-end">@s.QuantityReserved</td>
+                    <td class="text-end">
+                        @if (s.QuantityAvailable <= 0) { <span class="badge badge-out">0</span> }
+                        else if (s.QuantityAvailable <= 5) { <span class="badge badge-low">@s.QuantityAvailable</span> }
+                        else { <span>@s.QuantityAvailable</span> }
+                    </td>
+                    <td class="pe-3">
+                        <form asp-action="AdjustStock" method="post" class="d-flex flex-wrap gap-2">
+                            <input type="hidden" name="productId" value="@s.ProductId" />
+                            <label class="visually-hidden" for="d-@s.ProductId">Change for @s.ProductName</label>
+                            <input id="d-@s.ProductId" name="quantityDelta" type="number" class="form-control form-control-sm" style="width:6rem" value="5" required />
+                            <label class="visually-hidden" for="r-@s.ProductId">Reason</label>
+                            <input id="r-@s.ProductId" name="reason" class="form-control form-control-sm" style="width:10rem" value="Restock delivery" required minlength="3" />
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span><span class="btn-label">Apply</span>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (unstocked.Count > 0)
+{
+    <h2 class="h5 mt-4">Products without stock records</h2>
+    <div class="ac-card p-3">
+        @foreach (var p in unstocked)
+        {
+            <form asp-action="AdjustStock" method="post" class="d-flex flex-wrap align-items-center gap-2 py-2">
+                <span class="flex-grow-1">@p.Name <span class="small text-muted font-monospace">@p.Sku</span></span>
+                <input type="hidden" name="productId" value="@p.Id" />
+                <input type="hidden" name="reason" value="Opening stock" />
+                <label class="visually-hidden" for="o-@p.Id">Opening stock for @p.Name</label>
+                <input id="o-@p.Id" name="quantityDelta" type="number" min="1" class="form-control form-control-sm" style="width:6rem" value="10" />
+                <button type="submit" class="btn btn-gold btn-sm">Add opening stock</button>
+            </form>
+        }
+    </div>
+}

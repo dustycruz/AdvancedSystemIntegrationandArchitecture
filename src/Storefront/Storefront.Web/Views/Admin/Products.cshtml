@@ -1,0 +1,26 @@
+@model ICollection<ProductResponse>
+@{
+    ViewData["Title"] = "Products";
+}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <h1 class="h2 mb-0">Products</h1>
+    <a class="btn btn-gold" asp-action="CreateProduct"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>New product</a>
+</div>
+<div class="ac-card p-0 table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">All products, including inactive ones</caption>
+        <thead><tr><th scope="col" class="ps-3">Product</th><th scope="col">SKU</th><th scope="col" class="text-end">Price</th><th scope="col">Status</th><th scope="col" class="text-end pe-3">Actions</th></tr></thead>
+        <tbody>
+            @foreach (var p in Model.OrderBy(p => p.Name))
+            {
+                <tr>
+                    <td class="ps-3"><i class="bi @Display.ProductIcon(p.Sku) me-2 text-primary" aria-hidden="true"></i>@p.Name</td>
+                    <td class="small font-monospace">@p.Sku</td>
+                    <td class="text-end">@Display.Money(p.Price)</td>
+                    <td>@if (p.IsActive) { <span class="badge badge-stock">Active</span> } else { <span class="badge badge-inactive">Inactive</span> }</td>
+                    <td class="text-end pe-3"><a class="btn btn-outline-primary btn-sm" asp-action="EditProduct" asp-route-id="@p.Id"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
