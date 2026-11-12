@@ -1,0 +1,50 @@
+# The Docker build context is the repository root, so every Dockerfile can
+# restore the shared projects under src/Shared and read the OpenAPI contracts.
+#
+# Keep contracts/ and src/ IN the context: the generated API clients
+# (NSwag OpenApiReference) are produced from contracts/*.v1.yaml at build time.
+
+# Version control and editor state
+.git
+.gitignore
+.gitattributes
+.github
+.vs
+.vscode
+.idea
+*.user
+*.suo
+*.swp
+
+# Build output is always produced inside the container
+**/bin
+**/obj
+**/out
+**/publish
+**/TestResults
+**/node_modules
+
+# Secrets and local configuration never go into an image.
+# Containers receive their configuration from docker-compose.yml + .env at run time.
+.env
+.env.*
+**/appsettings.*.local.json
+**/secrets.json
+
+# Docker files themselves
+docker-compose*.yml
+**/.dockerignore
+
+# Documentation, test collections and evidence are not needed to build images
+README.md
+CONTRIBUTIONS.md
+docs
+postman
+http
+Evidence
+setup.cmd
+
+# Folder placeholders and OS clutter
+**/.gitkeep
+**/.DS_Store
+**/Thumbs.db
