@@ -1,0 +1,235 @@
+# Store Platform Capstone - end-to-end flows through the gateway.
+# Written for the VS Code "REST Client" extension (humao.rest-client), which supports named request variables.
+# Start the platform first:  setup.cmd  then  docker compose up --build
+# Run the requests top to bottom: later requests reuse the tokens and ids of the named requests
+# (customerLogin, adminLogin, happyOrder, ...), so send each named request before the ones that use it.
+# After placing an order, wait ~3 seconds before reading it: the saga runs asynchronously.
+
+@gateway = http://localhost:5000
+@hoodieId = a1000000-0000-0000-0000-000000000001
+@notebookId = a1000000-0000-0000-0000-000000000005
+@jacketId = a1000000-0000-0000-0000-000000000010
+
+###############################################################################
+# 1. Browse (public)
+###############################################################################
+
+### List active products
+GET {{gateway}}/catalog/v1/products
+X-Correlation-ID: flows-browse-1
+
+### One product
+GET {{gateway}}/catalog/v1/products/{{hoodieId}}
+
+### Stock levels (the Varsity Jacket has 1 - used for the insufficient-stock demo)
+GET {{gateway}}/inventory/v1/stock
+
+###############################################################################
+# 2. Register and login (tokens are captured by name)
+###############################################################################
+
+### Register a new customer (change the email if it already exists -> 409)
+POST {{gateway}}/identity/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "juan.delacruz@example.com",
+  "password": "Secret123",
+  "fullName": "Juan Dela Cruz"
+}
+
+### Login as the seeded customer
+# @name customerLogin
+POST {{gateway}}/identity/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "customer@storeplatform.local",
+  "password": "Customer@12345"
+}
+
+### Login as the seeded admin
+# @name adminLogin
+POST {{gateway}}/identity/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@storeplatform.local",
+  "password": "Admin@12345"
+}
+
+### Who am I
+GET {{gateway}}/identity/v1/users/me
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+###############################################################################
+# 3. Successful order: Pending -> StockReserved -> PaymentCharged -> Confirmed
+###############################################################################
+
+### Place an order (202 Accepted, status Pending)
+# @name happyOrder
+POST {{gateway}}/orders/v1/orders
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+X-Correlation-ID: flows-happy-1
+
+{
+  "lines": [
+    { "productId": "{{hoodieId}}", "quantity": 1 },
+    { "productId": "{{notebookId}}", "quantity": 2 }
+  ]
+}
+
+### Read it back with the status history (expect Confirmed)
+GET {{gateway}}/orders/v1/orders/{{happyOrder.response.body.$.id}}
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+### My orders
+GET {{gateway}}/orders/v1/orders/mine
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+###############################################################################
+# 4. Compensation
+###############################################################################
+
+### 4a. Insufficient stock: 2 x Varsity Jacket (stock 1) -> Cancelled, nothing charged
+# @name noStockOrder
+POST {{gateway}}/orders/v1/orders
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+X-Correlation-ID: flows-nostock-1
+
+{ "lines": [ { "productId": "{{jacketId}}", "quantity": 2 } ] }
+
+###
+GET {{gateway}}/orders/v1/orders/{{noStockOrder.response.body.$.id}}
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+### 4b. Payment declined: switch on DeclineCharge
+PUT {{gateway}}/payments/v1/admin/failure-mode
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "mode": "DeclineCharge" }
+
+### Read the switch back
+GET {{gateway}}/payments/v1/admin/failure-mode
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+
+### Place an order -> stock released -> Cancelled
+# @name declinedOrder
+POST {{gateway}}/orders/v1/orders
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+X-Correlation-ID: flows-declined-1
+
+{ "lines": [ { "productId": "{{hoodieId}}", "quantity": 1 } ] }
+
+###
+GET {{gateway}}/orders/v1/orders/{{declinedOrder.response.body.$.id}}
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+### Switch payments back to normal
+PUT {{gateway}}/payments/v1/admin/failure-mode
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "mode": "None" }
+
+### 4c. Failure after payment: switch on FailAfterPayment
+PUT {{gateway}}/orders/v1/admin/failure-mode
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "mode": "FailAfterPayment" }
+
+### Place an order -> charged, refunded, stock released, Cancelled
+# @name afterPaymentOrder
+POST {{gateway}}/orders/v1/orders
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+X-Correlation-ID: flows-afterpay-1
+
+{ "lines": [ { "productId": "{{hoodieId}}", "quantity": 1 } ] }
+
+###
+GET {{gateway}}/orders/v1/orders/{{afterPaymentOrder.response.body.$.id}}
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+
+### The payment shows Refunded
+GET {{gateway}}/payments/v1/payments/by-order/{{afterPaymentOrder.response.body.$.id}}
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+
+### Switch orders back to normal
+PUT {{gateway}}/orders/v1/admin/failure-mode
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "mode": "None" }
+
+###############################################################################
+# 5. Security at the gateway
+###############################################################################
+
+### Admin action without a token -> 401
+POST {{gateway}}/catalog/v1/products
+Content-Type: application/json
+
+{ "sku": "AC-FLOWS-1", "name": "Should not exist", "price": 1 }
+
+### Admin action with a customer token -> 403
+POST {{gateway}}/catalog/v1/products
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "sku": "AC-FLOWS-1", "name": "Should not exist", "price": 1 }
+
+### Admin creates a product -> 201
+POST {{gateway}}/catalog/v1/products
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "sku": "AC-STICKER-SET", "name": "Sticker Set", "description": "Five weatherproof vinyl stickers.", "price": 95.00 }
+
+### Admin adjusts stock -> 200
+POST {{gateway}}/inventory/v1/stock/{{hoodieId}}/adjustments
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "quantityDelta": 10, "reason": "Restock delivery" }
+
+###############################################################################
+# 6. Chaos and retry (Development only)
+###############################################################################
+
+### Fail half of all Catalog product reads
+PUT {{gateway}}/catalog/v1/chaos
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "failureRate": 0.5, "delayMs": 0 }
+
+### Orders still succeed: Order retries its Catalog call (see docker compose logs order-api)
+POST {{gateway}}/orders/v1/orders
+Authorization: Bearer {{customerLogin.response.body.$.accessToken}}
+Content-Type: application/json
+X-Correlation-ID: flows-chaos-1
+
+{ "lines": [ { "productId": "{{notebookId}}", "quantity": 1 } ] }
+
+### Turn chaos off
+PUT {{gateway}}/catalog/v1/chaos
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "failureRate": 0, "delayMs": 0 }
+
+###############################################################################
+# 7. Login rate limit: send this 6 times within a minute -> the 6th is 429
+###############################################################################
+
+### Wrong password (401, then 429 "Too many login attempts...")
+POST {{gateway}}/identity/v1/auth/login
+Content-Type: application/json
+
+{ "email": "nobody@example.com", "password": "Wrong1234" }
