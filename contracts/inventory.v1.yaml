@@ -1,0 +1,282 @@
+openapi: 3.0.3
+info:
+  title: Inventory API
+  version: v1
+  description: |
+    Inventory service of the Store Platform. Owns stock on hand and the
+    reservations held for orders that are still in progress.
+
+    Through the gateway these operations are exposed under `/inventory/v1/...`.
+    Reading stock is public; adjusting stock and reading reservations require
+    a JWT with the `Admin` role.
+
+    Stock is reserved and released by the order saga over RabbitMQ, not over
+    HTTP: Inventory consumes `OrderPlaced`, `StockReleaseRequested` and
+    `OrderConfirmed`, and publishes `StockReserved`, `StockReservationFailed`
+    and `StockReleased` on the `store.events` exchange.
+  contact:
+    name: Laurence Mirandilla
+servers:
+  - url: http://localhost:5003
+    description: Inventory service, direct (development Swagger)
+  - url: http://localhost:5000/inventory
+    description: Through the Ocelot gateway (path prefix rewritten by the gateway)
+tags:
+  - name: Stock
+    description: Stock levels per product
+  - name: Reservations
+    description: Stock held for in-flight orders
+paths:
+  /api/v1/stock:
+    get:
+      tags: [Stock]
+      operationId: ListStock
+      summary: List stock levels for every product
+      responses:
+        '200':
+          description: Stock levels ordered by product name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StockItemResponse'
+  /api/v1/stock/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Stock]
+      operationId: GetStockByProductId
+      summary: Get the stock level of one product
+      responses:
+        '200':
+          description: The stock level
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockItemResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/stock/{productId}/adjustments:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags: [Stock]
+      operationId: AdjustStock
+      summary: Add or remove stock on hand (Admin)
+      description: |
+        Applies `quantityDelta` to the quantity on hand. The product is
+        validated against the Catalog service first: an unknown product returns
+        404, and an unreachable Catalog returns 503. A product without a stock
+        record gets one on its first positive adjustment. The result may not
+        drop below the quantity currently reserved (409).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockAdjustmentRequest'
+      responses:
+        '200':
+          description: Stock after the adjustment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockItemResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/reservations/{orderId}:
+    parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Reservations]
+      operationId: GetReservationsByOrderId
+      summary: List the reservations held for an order (Admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reservations for the order, empty when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReservationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by the Identity service (`POST /identity/v1/auth/login`)
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    StockItemResponse:
+      type: object
+      required: [productId, sku, productName, quantityOnHand, quantityReserved, quantityAvailable, updatedAt]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        productName:
+          type: string
+        quantityOnHand:
+          type: integer
+          format: int32
+          description: Physical units in the warehouse, including reserved units
+        quantityReserved:
+          type: integer
+          format: int32
+          description: Units held for orders that are not yet confirmed or cancelled
+        quantityAvailable:
+          type: integer
+          format: int32
+          description: quantityOnHand minus quantityReserved
+        updatedAt:
+          type: string
+          format: date-time
+    StockAdjustmentRequest:
+      type: object
+      required: [quantityDelta, reason]
+      properties:
+        quantityDelta:
+          type: integer
+          format: int32
+          minimum: -100000
+          maximum: 100000
+          description: Positive to add stock, negative to remove it. Zero is rejected.
+          example: 10
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 200
+          example: Restock delivery
+    ReservationStatus:
+      type: string
+      enum: [Reserved, Released, Committed]
+    ReservationResponse:
+      type: object
+      required: [id, orderId, productId, quantity, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int32
+        status:
+          $ref: '#/components/schemas/ReservationStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details. Every error carries the request's correlationId.
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: {}
+  responses:
+    BadRequest:
+      description: The request failed validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: The JWT does not carry the Admin role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: The product does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: The adjustment would leave less stock than is reserved
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ServiceUnavailable:
+      description: The Catalog service could not be reached to validate the product
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
