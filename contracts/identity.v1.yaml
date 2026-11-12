@@ -1,0 +1,226 @@
+openapi: 3.0.3
+info:
+  title: Identity API
+  version: v1
+  description: |
+    Identity service of the Store Platform. Registers customers, verifies
+    credentials and issues the JWTs that the gateway and every service
+    validate. Tokens carry the claims `sub` (user id), `email`, `name` and
+    `role` (`Customer` or `Admin`).
+
+    Through the gateway these operations are exposed under `/identity/v1/...`.
+    Register and login are public. The gateway limits
+    `POST /identity/v1/auth/login` to 5 requests per minute and answers 429
+    when the limit is exceeded.
+  contact:
+    name: CJ Bello
+servers:
+  - url: http://localhost:5001
+    description: Identity service, direct (development Swagger)
+  - url: http://localhost:5000/identity
+    description: Through the Ocelot gateway (path prefix rewritten by the gateway)
+tags:
+  - name: Auth
+    description: Registration and login
+  - name: Users
+    description: The signed-in user
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: Register
+      summary: Register a new customer account and sign in
+      description: New accounts always get the `Customer` role. Admin accounts are seeded from configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created; the response already contains a token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: An account with this email already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: Login
+      summary: Exchange email and password for a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Credentials accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Email or password is incorrect
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          description: Too many login attempts (returned by the gateway)
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      operationId: GetCurrentUser
+      summary: Get the account of the signed-in user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Missing or invalid JWT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: The account in the token no longer exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserRole:
+      type: string
+      enum: [Customer, Admin]
+    RegisterRequest:
+      type: object
+      required: [email, password, fullName]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 200
+          example: juan.delacruz@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          description: At least 8 characters with an uppercase letter, a lowercase letter and a digit
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 120
+          example: Juan Dela Cruz
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 200
+        password:
+          type: string
+          format: password
+          maxLength: 100
+    UserResponse:
+      type: object
+      required: [id, email, fullName, role, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        fullName:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        createdAt:
+          type: string
+          format: date-time
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresAt, user]
+      properties:
+        accessToken:
+          type: string
+          description: Signed JWT (HMAC-SHA256)
+        tokenType:
+          type: string
+          example: Bearer
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details. Every error carries the request's correlationId.
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: {}
+  responses:
+    BadRequest:
+      description: The request failed validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
