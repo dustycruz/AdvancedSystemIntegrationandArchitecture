@@ -1,0 +1,44 @@
+@model ProductDetailsViewModel
+@{
+    var p = Model.Card.Product;
+    ViewData["Title"] = p.Name;
+}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Shop</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@p.Name</li>
+    </ol>
+</nav>
+<div class="row g-4 align-items-start">
+    <div class="col-md-6">
+        <div class="ac-card overflow-hidden"><partial name="_ProductMedia" model="p" /></div>
+    </div>
+    <div class="col-md-6">
+        <div class="ac-card p-4">
+            <p class="text-muted small mb-1">SKU @p.Sku</p>
+            <h1 class="h2">@p.Name</h1>
+            <div class="gold-rule my-3"></div>
+            <p class="price fs-3 mb-2">@Display.Money(p.Price)</p>
+            <div class="mb-3"><partial name="_StockBadge" model="Model.Card" /></div>
+            <p>@p.Description</p>
+            @if (Model.InCart > 0)
+            {
+                <p class="small text-muted"><i class="bi bi-bag-check me-1" aria-hidden="true"></i>You have @Model.InCart in your cart.</p>
+            }
+            <form asp-controller="Cart" asp-action="Add" method="post" class="row g-2 align-items-end mt-2">
+                <input type="hidden" name="productId" value="@p.Id" />
+                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                <div class="col-4 col-sm-3">
+                    <label for="quantity" class="form-label">Quantity</label>
+                    <input id="quantity" name="quantity" type="number" class="form-control" min="1" max="@(Math.Min(10, Model.Card.Available ?? 10))" value="1" />
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary btn-lg w-100" disabled="@(!Model.Card.InStock)">
+                        <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span>
+                        <span class="btn-label"><i class="bi bi-bag-plus me-1" aria-hidden="true"></i>@(Model.Card.InStock ? "Add to cart" : "Out of stock")</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
