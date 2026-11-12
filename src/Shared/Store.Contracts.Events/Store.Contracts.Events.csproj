@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Store.Contracts.Events</RootNamespace>
+    <Description>Integration event records shared by every service that publishes or consumes on the store.events exchange.</Description>
+  </PropertyGroup>
+
+</Project>

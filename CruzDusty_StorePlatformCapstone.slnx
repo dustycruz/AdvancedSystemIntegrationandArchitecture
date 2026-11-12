@@ -15,6 +15,8 @@
   <Folder Name="/src/Services/Inventory/" />
   <Folder Name="/src/Services/Order/" />
   <Folder Name="/src/Services/Payment/" />
-  <Folder Name="/src/Shared/" />
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/Store.Contracts.Events/Store.Contracts.Events.csproj" />
+  </Folder>
   <Folder Name="/src/Storefront/" />
 </Solution>
