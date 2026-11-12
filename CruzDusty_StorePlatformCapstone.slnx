@@ -19,6 +19,7 @@
   <Folder Name="/src/Services/Payment/" />
   <Folder Name="/src/Shared/">
     <Project Path="src/Shared/Store.Contracts.Events/Store.Contracts.Events.csproj" />
+    <Project Path="src/Shared/Store.Observability/Store.Observability.csproj" />
   </Folder>
   <Folder Name="/src/Storefront/" />
 </Solution>

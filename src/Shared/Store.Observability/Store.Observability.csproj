@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Store.Observability</RootNamespace>
+    <Description>Cross-cutting observability for every Store Platform service: X-Correlation-ID propagation, RFC 9457 Problem Details and logging scopes.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
