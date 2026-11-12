@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: Catalog API
+  version: v1
+  description: |
+    Catalog service of the Store Platform. Owns products (SKU, name, price,
+    active flag) and is the source of truth for what can be sold.
+
+    Through the gateway these operations are exposed under `/catalog/v1/...`
+    (for example `GET /catalog/v1/products`). Inside the Docker network other
+    services call the paths below directly.
+
+    Browsing is public. Creating and updating products and the chaos switch
+    require a JWT with the `Admin` role.
+  contact:
+    name: Dusty Cruz
+servers:
+  - url: http://localhost:5002
+    description: Catalog service, direct (development Swagger)
+  - url: http://localhost:5000/catalog
+    description: Through the Ocelot gateway (path prefix rewritten by the gateway)
+tags:
+  - name: Products
+    description: Product catalog
+  - name: Chaos
+    description: Development-only fault injection used to demonstrate HTTP resilience
+paths:
+  /api/v1/products:
+    get:
+      tags: [Products]
+      operationId: ListProducts
+      summary: List products
+      description: |
+        Returns active products ordered by name. `includeInactive=true` also
+        returns deactivated products and requires the `Admin` role.
+      parameters:
+        - name: includeInactive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Products]
+      operationId: CreateProduct
+      summary: Create a product (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created
+          headers:
+            Location:
+              description: URL of the new product
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      operationId: GetProductById
+      summary: Get one product
+      description: |
+        Returns the product whether it is active or not, so callers such as
+        Order and Inventory can tell "does not exist" (404) apart from
+        "exists but is not for sale" (`isActive: false`).
+      responses:
+        '200':
+          description: The product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Products]
+      operationId: UpdateProduct
+      summary: Update a product (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/chaos:
+    get:
+      tags: [Chaos]
+      operationId: GetChaosSettings
+      summary: Read the fault-injection settings (Admin, Development only)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChaosSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Chaos]
+      operationId: UpdateChaosSettings
+      summary: Change the fault-injection settings (Admin, Development only)
+      description: |
+        `failureRate` is the share of product reads (0.0 to 1.0) answered with
+        503; `delayMs` is added before every product read. Both reset to 0 when
+        the service restarts. Returns 404 outside the Development environment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChaosSettings'
+      responses:
+        '200':
+          description: Settings applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChaosSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by the Identity service (`POST /identity/v1/auth/login`)
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ProductResponse:
+      type: object
+      required: [id, sku, name, description, price, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+          example: AC-HOODIE-NVY
+        name:
+          type: string
+          example: Angelicum Hoodie
+        description:
+          type: string
+        price:
+          type: number
+          format: decimal
+          example: 1250.00
+        imageUrl:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateProductRequest:
+      type: object
+      required: [sku, name, price]
+      properties:
+        sku:
+          type: string
+          minLength: 3
+          maxLength: 40
+          pattern: '^[A-Z0-9-]+$'
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        price:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 1000000
+        imageUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+    UpdateProductRequest:
+      type: object
+      required: [name, price, isActive]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        price:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 1000000
+        imageUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+        isActive:
+          type: boolean
+    ChaosSettings:
+      type: object
+      required: [failureRate, delayMs]
+      properties:
+        failureRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.5
+        delayMs:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 30000
+          example: 0
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details. Every error carries the request's correlationId.
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: {}
+  responses:
+    BadRequest:
+      description: The request failed validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: The JWT does not carry the Admin role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: The resource does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: The request conflicts with existing data (for example a duplicate SKU)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ServiceUnavailable:
+      description: The service is temporarily unavailable (also produced by chaos injection)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
