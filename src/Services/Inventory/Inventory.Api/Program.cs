@@ -1,3 +1,4 @@
+using Inventory.Api.Clients.Catalog;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Store.Observability;
@@ -9,6 +10,9 @@ builder.AddStoreObservability();
 var connectionString = builder.Configuration.GetConnectionString("InventoryDb")
     ?? throw new InvalidOperationException("Connection string 'InventoryDb' is not configured.");
 builder.Services.AddDbContext<InventoryDbContext>(options => options.UseNpgsql(connectionString));
+
+// Catalog is called synchronously through the generated client with a resilience pipeline.
+builder.Services.AddCatalogClient(builder.Configuration);
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<InventoryDbContext>("inventory-db");
