@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="NSwag.ApiDescription.Client">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
@@ -17,6 +22,16 @@
     <ProjectReference Include="..\..\..\Shared\Store.Contracts.Events\Store.Contracts.Events.csproj" />
     <ProjectReference Include="..\..\..\Shared\Store.Messaging\Store.Messaging.csproj" />
     <ProjectReference Include="..\..\..\Shared\Store.Observability\Store.Observability.csproj" />
+  </ItemGroup>
+
+  <!-- Typed Catalog client generated at build time from the contract (contract-first, Module 2). -->
+  <ItemGroup>
+    <OpenApiReference Include="..\..\..\..\contracts\catalog.v1.yaml"
+                      CodeGenerator="NSwagCSharp"
+                      Namespace="Order.Api.Clients.Catalog.Generated"
+                      ClassName="CatalogClient"
+                      NSwagGenerateExceptionClasses="true"
+                      Options="/GenerateClientInterfaces:true /UseBaseUrl:false /JsonLibrary:SystemTextJson /OperationGenerationMode:SingleClientFromOperationId /GenerateNullableReferenceTypes:true /ExceptionClass:CatalogApiException /DateTimeType:System.DateTimeOffset" />
   </ItemGroup>
 
 </Project>
