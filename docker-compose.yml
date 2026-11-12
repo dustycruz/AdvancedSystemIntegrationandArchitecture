@@ -1,0 +1,216 @@
+# Store Platform Capstone - the whole system in one Compose file.
+#
+#   setup.cmd                    (creates .env from .env.example)
+#   docker compose up --build
+#
+# Every value comes from .env. Only the gateway, the storefront, the RabbitMQ management UI and the
+# per-service Swagger ports are published to the host; the databases stay on the internal network.
+
+name: ${COMPOSE_PROJECT_NAME:-storeplatform}
+
+x-dotnet-service: &dotnet-service
+  restart: unless-stopped
+  networks:
+    - store-net
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 40s
+
+x-postgres: &postgres
+  image: postgres:16-alpine
+  restart: unless-stopped
+  networks:
+    - store-net
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}"]
+    interval: 5s
+    timeout: 5s
+    retries: 12
+
+x-jwt: &jwt
+  Jwt__Key: ${JWT_KEY}
+  Jwt__Issuer: ${JWT_ISSUER}
+  Jwt__Audience: ${JWT_AUDIENCE}
+
+x-rabbitmq: &rabbitmq
+  RabbitMq__HostName: ${RABBITMQ_HOST}
+  RabbitMq__Port: ${RABBITMQ_PORT}
+  RabbitMq__UserName: ${RABBITMQ_USER}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD}
+  RabbitMq__ExchangeName: ${RABBITMQ_EXCHANGE}
+  RabbitMq__DeadLetterExchangeName: ${RABBITMQ_DEAD_LETTER_EXCHANGE}
+  RabbitMq__MaxDeliveryAttempts: ${RABBITMQ_MAX_DELIVERY_ATTEMPTS}
+
+services:
+  # ---------------------------------------------------------------- databases (one per service)
+  identity-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${IDENTITY_DB_NAME}
+      POSTGRES_USER: ${IDENTITY_DB_USER}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD}
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+
+  catalog-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${CATALOG_DB_NAME}
+      POSTGRES_USER: ${CATALOG_DB_USER}
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD}
+    volumes:
+      - catalog-db-data:/var/lib/postgresql/data
+
+  inventory-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${INVENTORY_DB_NAME}
+      POSTGRES_USER: ${INVENTORY_DB_USER}
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD}
+    volumes:
+      - inventory-db-data:/var/lib/postgresql/data
+
+  order-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${ORDER_DB_NAME}
+      POSTGRES_USER: ${ORDER_DB_USER}
+      POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD}
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+
+  payment-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${PAYMENT_DB_NAME}
+      POSTGRES_USER: ${PAYMENT_DB_USER}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+
+  # ---------------------------------------------------------------- services
+  identity-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Services/Identity/Identity.Api/Dockerfile
+    environment:
+      <<: *jwt
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      Jwt__ExpiryMinutes: ${JWT_EXPIRY_MINUTES}
+      ConnectionStrings__IdentityDb: Host=${IDENTITY_DB_HOST};Port=5432;Database=${IDENTITY_DB_NAME};Username=${IDENTITY_DB_USER};Password=${IDENTITY_DB_PASSWORD}
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD}
+      Seed__CustomerEmail: ${SEED_CUSTOMER_EMAIL}
+      Seed__CustomerPassword: ${SEED_CUSTOMER_PASSWORD}
+    ports:
+      - "${IDENTITY_API_PORT}:8080"
+    depends_on:
+      identity-db:
+        condition: service_healthy
+
+  catalog-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Services/Catalog/Catalog.Api/Dockerfile
+    environment:
+      <<: *jwt
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ConnectionStrings__CatalogDb: Host=${CATALOG_DB_HOST};Port=5432;Database=${CATALOG_DB_NAME};Username=${CATALOG_DB_USER};Password=${CATALOG_DB_PASSWORD}
+    ports:
+      - "${CATALOG_API_PORT}:8080"
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+
+  inventory-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Services/Inventory/Inventory.Api/Dockerfile
+    environment:
+      <<: [*jwt, *rabbitmq]
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ConnectionStrings__InventoryDb: Host=${INVENTORY_DB_HOST};Port=5432;Database=${INVENTORY_DB_NAME};Username=${INVENTORY_DB_USER};Password=${INVENTORY_DB_PASSWORD}
+      Services__Catalog__BaseUrl: http://catalog-api:8080
+      RabbitMq__ClientProvidedName: inventory-api
+    ports:
+      - "${INVENTORY_API_PORT}:8080"
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+      catalog-api:
+        condition: service_healthy
+
+  order-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Services/Order/Order.Api/Dockerfile
+    environment:
+      <<: [*jwt, *rabbitmq]
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ConnectionStrings__OrderDb: Host=${ORDER_DB_HOST};Port=5432;Database=${ORDER_DB_NAME};Username=${ORDER_DB_USER};Password=${ORDER_DB_PASSWORD}
+      Services__Catalog__BaseUrl: http://catalog-api:8080
+      RabbitMq__ClientProvidedName: order-api
+    ports:
+      - "${ORDER_API_PORT}:8080"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      catalog-api:
+        condition: service_healthy
+
+  payment-api:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Services/Payment/Payment.Api/Dockerfile
+    environment:
+      <<: [*jwt, *rabbitmq]
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ConnectionStrings__PaymentDb: Host=${PAYMENT_DB_HOST};Port=5432;Database=${PAYMENT_DB_NAME};Username=${PAYMENT_DB_USER};Password=${PAYMENT_DB_PASSWORD}
+      RabbitMq__ClientProvidedName: payment-api
+    ports:
+      - "${PAYMENT_API_PORT}:8080"
+    depends_on:
+      payment-db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- edge
+  gateway:
+    <<: *dotnet-service
+    build:
+      context: .
+      dockerfile: src/Gateway/Gateway.Api/Dockerfile
+    environment:
+      <<: *jwt
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+    ports:
+      - "${GATEWAY_PORT}:8080"
+    depends_on:
+      identity-api:
+        condition: service_healthy
+      catalog-api:
+        condition: service_healthy
+      inventory-api:
+        condition: service_healthy
+      order-api:
+        condition: service_healthy
+      payment-api:
+        condition: service_healthy
+
+networks:
+  store-net:
+    name: ${COMPOSE_PROJECT_NAME:-storeplatform}-net
+
+volumes:
+  identity-db-data:
+  catalog-db-data:
+  inventory-db-data:
+  order-db-data:
+  payment-db-data:
