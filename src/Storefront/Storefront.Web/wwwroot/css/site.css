@@ -98,8 +98,10 @@ h1, h2, h3, .brand, .display-font { font-family: "Cinzel", Georgia, serif; lette
 .cart-badge { background: var(--ac-red); color: #fff; font-size: .7rem; }
 
 /* Hero */
-.ac-hero { background: var(--ac-blue-gradient); color: #fff; border-radius: var(--ac-radius); position: relative; overflow: hidden; }
-.ac-hero::after { content: ""; position: absolute; inset: auto -10% -60% auto; width: 60%; height: 160%; background: radial-gradient(circle, rgba(243, 230, 200, .35), transparent 60%); }
+.ac-hero {
+  background: radial-gradient(circle at 88% 85%, rgba(243, 230, 200, .38), transparent 42%), var(--ac-blue-gradient);
+  color: #fff; border-radius: var(--ac-radius); position: relative; overflow: hidden;
+}
 .ac-hero h1 { color: #fff; }
 .ac-hero .lead { color: rgba(255, 255, 255, .9); }
 
