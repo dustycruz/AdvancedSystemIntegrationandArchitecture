@@ -1,0 +1,43 @@
+@model LoginViewModel
+@inject IWebHostEnvironment Env
+@{
+    ViewData["Title"] = "Sign in";
+    var logo = Env.WebRootFileProvider.GetFileInfo("images/logo.png").Exists ? "~/images/logo.png" : "~/images/crest.svg";
+}
+<div class="row g-0 auth-split align-items-stretch ac-card overflow-hidden">
+    <div class="col-lg-6 auth-brand p-4 p-md-5 d-flex flex-column justify-content-center">
+        <img src="@Url.Content(logo)" alt="UST Angelicum College logo" width="88" height="88" class="mb-4" />
+        <h1 class="display-6 fw-bold">Welcome back to the Angelicum Store</h1>
+        <div class="gold-rule my-4"></div>
+        <p class="motto mb-2">Caritas · Justitia · Fortitudo</p>
+        <p class="opacity-75 mb-0">Charity, justice and fortitude - in everything we do, including your next order.</p>
+    </div>
+    <div class="col-lg-6 p-4 p-md-5 d-flex flex-column justify-content-center">
+        <h2 class="h3 mb-1">Sign in</h2>
+        <p class="text-muted mb-4">New here? <a asp-action="Register">Create an account</a></p>
+        <form asp-action="Login" method="post" novalidate>
+            <input type="hidden" asp-for="ReturnUrl" />
+            @if (!ViewData.ModelState.IsValid && ViewData.ModelState[string.Empty]?.Errors.Count > 0)
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>@(ViewData["ErrorTitle"] ?? "Sign in failed")</strong>
+                    <div asp-validation-summary="ModelOnly" class="mb-0"></div>
+                </div>
+            }
+            <div class="mb-3">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control form-control-lg" autocomplete="username" autofocus />
+                <span asp-validation-for="Email" class="text-danger small"></span>
+            </div>
+            <div class="mb-4">
+                <label asp-for="Password" class="form-label"></label>
+                <input asp-for="Password" class="form-control form-control-lg" autocomplete="current-password" />
+                <span asp-validation-for="Password" class="text-danger small"></span>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg w-100">
+                <span class="spinner-border spinner-border-sm btn-spinner me-1" aria-hidden="true"></span>
+                <span class="btn-label">Sign in</span>
+            </button>
+        </form>
+    </div>
+</div>
