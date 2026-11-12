@@ -9,6 +9,7 @@ using Store.Contracts.Events;
 using Store.Messaging.Configuration;
 using Store.Messaging.Connection;
 using Store.Messaging.Topology;
+using Store.Observability.Logging;
 
 namespace Store.Messaging.Consuming;
 
@@ -107,13 +108,11 @@ public abstract class RabbitMqConsumerBase<TEvent> : BackgroundService where TEv
         var scopes = _scopeProviders.Select(provider => provider.BeginScope(context, headers)).ToList();
         try
         {
-            using var messageScope = Logger.BeginScope(new Dictionary<string, object>
-            {
-                ["MessageId"] = message.MessageId,
-                ["MessageType"] = typeof(TEvent).Name,
-                ["OrderId"] = message.OrderId,
-                ["Queue"] = QueueName
-            });
+            using var messageScope = Logger.BeginPropertyScope(
+                ("MessageId", message.MessageId),
+                ("MessageType", typeof(TEvent).Name),
+                ("OrderId", message.OrderId),
+                ("Queue", QueueName));
 
             try
             {

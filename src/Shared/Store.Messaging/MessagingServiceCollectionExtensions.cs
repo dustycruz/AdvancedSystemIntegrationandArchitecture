@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Store.Contracts.Events;
 using Store.Messaging.Configuration;
 using Store.Messaging.Connection;
+using Store.Messaging.Correlation;
 using Store.Messaging.Consuming;
 using Store.Messaging.Publishing;
 
@@ -12,7 +13,10 @@ namespace Store.Messaging;
 
 public static class MessagingServiceCollectionExtensions
 {
-    /// <summary>Registers the RabbitMQ connection and the confirming event publisher, bound to the "RabbitMq" section.</summary>
+    /// <summary>
+    /// Registers the RabbitMQ connection, the confirming event publisher and correlation id propagation,
+    /// bound to the "RabbitMq" section.
+    /// </summary>
     public static IServiceCollection AddRabbitMqMessaging(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<RabbitMqOptions>()
@@ -22,6 +26,10 @@ public static class MessagingServiceCollectionExtensions
 
         services.AddSingleton<IRabbitMqConnection, RabbitMqConnection>();
         services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
+
+        // X-Correlation-ID travels in a message header and is restored (with a logging scope) when consumed.
+        services.AddSingleton<IPublishPropertiesEnricher, CorrelationIdPublishEnricher>();
+        services.AddSingleton<IConsumeScopeProvider, CorrelationIdConsumeScopeProvider>();
         return services;
     }
 
