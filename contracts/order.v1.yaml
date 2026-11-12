@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: Order API
+  version: v1
+  description: |
+    Order service of the Store Platform. Owns orders, order lines and the
+    status history, and orchestrates the order saga over RabbitMQ:
+
+    `Pending → StockReserved → PaymentCharged → Confirmed`
+
+    Compensation: insufficient stock cancels the order with nothing charged; a
+    declined payment releases the stock and cancels; a failure after the charge
+    refunds the payment, releases the stock and cancels. While compensation is
+    running the order is `Compensating`. Every transition is recorded in the
+    status history with a timestamp and, for compensation, a reason.
+
+    Placing an order returns 202 because the outcome is decided asynchronously;
+    poll `GET /api/v1/orders/{orderId}` until the status is `Confirmed` or
+    `Cancelled`.
+
+    Through the gateway these operations are exposed under `/orders/v1/...`.
+    Every operation requires a JWT.
+  contact:
+    name: CJ Bello
+servers:
+  - url: http://localhost:5004
+    description: Order service, direct (development Swagger)
+  - url: http://localhost:5000/orders
+    description: Through the Ocelot gateway (path prefix rewritten by the gateway)
+security:
+  - bearerAuth: []
+tags:
+  - name: Orders
+    description: Placing and reading orders
+  - name: Admin
+    description: Failure mode switch for saga demonstrations
+paths:
+  /api/v1/orders:
+    post:
+      tags: [Orders]
+      operationId: PlaceOrder
+      summary: Place an order (Customer)
+      description: |
+        Validates every product against Catalog (404 unknown, 409 inactive,
+        503 Catalog unavailable), snapshots the current unit prices onto the
+        order lines, stores the order as `Pending` and publishes `OrderPlaced`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceOrderRequest'
+      responses:
+        '202':
+          description: Order accepted; the saga decides the final status
+          headers:
+            Location:
+              description: URL of the new order
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Orders]
+      operationId: ListOrders
+      summary: List every order, newest first (Admin)
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/orders/mine:
+    get:
+      tags: [Orders]
+      operationId: ListMyOrders
+      summary: List the signed-in customer's orders, newest first
+      responses:
+        '200':
+          description: The customer's orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/orders/{orderId}:
+    parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Orders]
+      operationId: GetOrderById
+      summary: Get an order with its lines and status history
+      description: Customers can only read their own orders; another customer's order returns 404. Admins can read every order.
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/failure-mode:
+    get:
+      tags: [Admin]
+      operationId: GetOrderFailureMode
+      summary: Read the order failure mode (Admin)
+      responses:
+        '200':
+          description: Current failure mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFailureModeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Admin]
+      operationId: SetOrderFailureMode
+      summary: Change the order failure mode (Admin)
+      description: |
+        `FailAfterPayment` makes the saga fail right after a successful charge,
+        which triggers refund, stock release and cancellation. `None` restores
+        normal behaviour. The setting is stored in the Order database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderFailureModeRequest'
+      responses:
+        '200':
+          description: Failure mode applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderFailureModeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by the Identity service (`POST /identity/v1/auth/login`)
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [Pending, StockReserved, PaymentCharged, Compensating, Confirmed, Cancelled]
+    PlaceOrderLineRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+    PlaceOrderRequest:
+      type: object
+      required: [lines]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PlaceOrderLineRequest'
+    OrderLineResponse:
+      type: object
+      required: [productId, sku, productName, unitPrice, quantity, lineTotal]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        productName:
+          type: string
+        unitPrice:
+          type: number
+          format: decimal
+          description: Price snapshot taken from Catalog when the order was placed
+        quantity:
+          type: integer
+          format: int32
+        lineTotal:
+          type: number
+          format: decimal
+    OrderStatusHistoryResponse:
+      type: object
+      required: [status, occurredAt]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        reason:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+    OrderResponse:
+      type: object
+      required: [id, customerId, customerEmail, status, totalAmount, createdAt, updatedAt, lines, statusHistory]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        customerEmail:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        totalAmount:
+          type: number
+          format: decimal
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineResponse'
+        statusHistory:
+          type: array
+          description: Oldest first
+          items:
+            $ref: '#/components/schemas/OrderStatusHistoryResponse'
+    OrderSummaryResponse:
+      type: object
+      required: [id, customerEmail, status, totalAmount, itemCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerEmail:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        totalAmount:
+          type: number
+          format: decimal
+        itemCount:
+          type: integer
+          format: int32
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    OrderFailureMode:
+      type: string
+      enum: [None, FailAfterPayment]
+    OrderFailureModeRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: '#/components/schemas/OrderFailureMode'
+    OrderFailureModeResponse:
+      type: object
+      required: [mode, updatedAt]
+      properties:
+        mode:
+          $ref: '#/components/schemas/OrderFailureMode'
+        updatedAt:
+          type: string
+          format: date-time
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details. Every error carries the request's correlationId.
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      additionalProperties: {}
+  responses:
+    BadRequest:
+      description: The request failed validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: The JWT does not carry the required role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: The order, or a product in the request, does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: A product in the request exists but is not for sale (inactive)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ServiceUnavailable:
+      description: The Catalog service or the message broker could not be reached
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
