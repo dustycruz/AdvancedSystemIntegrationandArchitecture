@@ -1,0 +1,74 @@
+@model OrderResponse
+@{
+    ViewData["Title"] = $"Order #{Model.Id.ToString()[..8]}";
+    var isFinal = Model.Status is OrderStatus.Confirmed or OrderStatus.Cancelled;
+    var history = Model.StatusHistory.ToList();
+}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Index">Orders</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h2 mb-0">@ViewData["Title"]</h1>
+    <span data-order-status class="status-pill status-@Model.Status">@Display.StatusLabel(Model.Status)</span>
+</div>
+<div data-order-banner class="alert @(Model.Status == OrderStatus.Confirmed ? "alert-success" : "alert-danger")" role="status" hidden="@(!isFinal)">
+    @(Model.Status == OrderStatus.Confirmed ? "Your order is confirmed. Thank you for shopping with us!" : $"This order was cancelled. {Model.CancellationReason}")
+</div>
+<div class="visually-hidden" aria-live="polite" data-order-live></div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <section class="ac-card p-4" aria-labelledby="timeline-title"
+                 data-order-timeline data-status-url="@Url.Action("Status", new { id = Model.Id })" data-final="@(isFinal ? "true" : "false")">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 id="timeline-title" class="h5 mb-0">Order progress</h2>
+                <span class="small text-muted" data-polling hidden="@isFinal"><span class="spinner-grow spinner-grow-sm text-primary me-1" aria-hidden="true"></span>Updating live…</span>
+            </div>
+            <ol class="timeline">
+                @for (var i = 0; i < history.Count; i++)
+                {
+                    var step = history[i];
+                    var compensation = step.Status is OrderStatus.Compensating or OrderStatus.Cancelled;
+                    var current = i == history.Count - 1 && !isFinal;
+                    <li class="timeline-step @(compensation ? "compensation" : "done") @(current ? "current" : "")">
+                        <span class="timeline-dot"><i class="bi @Display.StatusIcon(step.Status)" aria-hidden="true"></i></span>
+                        <div class="timeline-title">@Display.StatusLabel(step.Status)</div>
+                        <div class="small">@step.Reason</div>
+                        <time class="timeline-time" datetime="@step.OccurredAt.ToString("O")">@step.OccurredAt.ToLocalTime().ToString("MMM d, yyyy h:mm:ss tt")</time>
+                    </li>
+                }
+                @if (!isFinal)
+                {
+                    <li class="timeline-step" aria-hidden="true">
+                        <span class="timeline-dot skeleton"></span>
+                        <div class="skeleton mb-2" style="width:40%"></div>
+                        <div class="skeleton" style="width:70%"></div>
+                    </li>
+                }
+            </ol>
+        </section>
+    </div>
+    <div class="col-lg-5">
+        <section class="ac-card p-4" aria-labelledby="items-title">
+            <h2 id="items-title" class="h5">Items</h2>
+            <ul class="list-unstyled mb-3">
+                @foreach (var line in Model.Lines)
+                {
+                    <li class="d-flex justify-content-between py-2 border-bottom">
+                        <span>@line.Quantity × @line.ProductName <span class="small text-muted d-block">@Display.Money(line.UnitPrice) each (price at order time)</span></span>
+                        <span>@Display.Money(line.LineTotal)</span>
+                    </li>
+                }
+            </ul>
+            <div class="d-flex justify-content-between"><strong>Total</strong><span class="price">@Display.Money(Model.TotalAmount)</span></div>
+            <p class="small text-muted mt-3 mb-0">Placed <time datetime="@Model.CreatedAt.ToString("O")">@Model.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</time></p>
+        </section>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/order-timeline.js" asp-append-version="true"></script>
+}

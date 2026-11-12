@@ -1,0 +1,52 @@
+@model OrdersViewModel
+@{
+    ViewData["Title"] = Model.AllOrders ? "All orders" : "My orders";
+}
+<h1 class="h2 mb-4">@ViewData["Title"]</h1>
+@if (Model.Orders.Count == 0)
+{
+    <div class="ac-card empty-state">
+        <i class="bi bi-receipt" aria-hidden="true"></i>
+        <h2 class="h5 mt-3">No orders yet</h2>
+        <p class="text-muted">When you place an order it shows up here with its full status history.</p>
+        <a class="btn btn-primary" asp-controller="Home" asp-action="Index">Browse the shop</a>
+    </div>
+}
+else
+{
+    <div class="ac-card p-0 table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <caption class="visually-hidden">@ViewData["Title"]</caption>
+            <thead>
+                <tr>
+                    <th scope="col" class="ps-3">Order</th>
+                    @if (Model.AllOrders) { <th scope="col">Customer</th> }
+                    <th scope="col">Placed</th>
+                    <th scope="col">Items</th>
+                    <th scope="col" class="text-end">Total</th>
+                    <th scope="col">Status</th>
+                </tr>
+            </thead>
+            <tbody class="stagger">
+                @for (var i = 0; i < Model.Orders.Count; i++)
+                {
+                    var o = Model.Orders[i];
+                    <tr style="--i:@i">
+                        <td class="ps-3"><a class="fw-semibold" asp-action="Details" asp-route-id="@o.Id">#@o.Id.ToString()[..8]</a></td>
+                        @if (Model.AllOrders) { <td class="small">@o.CustomerEmail</td> }
+                        <td class="small"><time datetime="@o.CreatedAt.ToString("O")">@o.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</time></td>
+                        <td>@o.ItemCount</td>
+                        <td class="text-end">@Display.Money(o.TotalAmount)</td>
+                        <td>
+                            <span class="status-pill status-@o.Status"><i class="bi @Display.StatusIcon(o.Status)" aria-hidden="true"></i>@Display.StatusLabel(o.Status)</span>
+                            @if (!string.IsNullOrEmpty(o.CancellationReason))
+                            {
+                                <div class="small text-muted mt-1">@o.CancellationReason</div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
