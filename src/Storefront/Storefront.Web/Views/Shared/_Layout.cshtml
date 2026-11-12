@@ -1,0 +1,141 @@
+@inject Storefront.Web.Services.CartService Cart
+@inject IWebHostEnvironment Env
+@{
+    var hasLogo = Env.WebRootFileProvider.GetFileInfo("images/logo.png").Exists;
+    var logo = hasLogo ? "~/images/logo.png" : "~/images/crest.svg";
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString();
+    var action = ViewContext.RouteData.Values["action"]?.ToString();
+    string Active(string c, string? a = null) => controller == c && (a is null || action == a) ? "active" : "";
+    var toast = Toasts.Take(TempData);
+    var cartCount = Cart.Count;
+}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Angelicum Store - official campus merchandise of UST Angelicum College." />
+    <title>@(ViewData["Title"] is string t ? $"{t} · Angelicum Store" : "Angelicum Store")</title>
+    <script>
+        (function () {
+            var theme = null;
+            try { theme = localStorage.getItem("ac-theme"); } catch (e) { }
+            if (!theme) theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            document.documentElement.setAttribute("data-bs-theme", theme);
+        })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="@Url.Content(hasLogo ? "~/images/logo.png" : "~/favicon.svg")" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/animations.css" asp-append-version="true" />
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div id="splash" class="splash" hidden aria-hidden="true">
+        <div class="text-center">
+            <img src="@Url.Content(logo)" alt="" class="splash-logo mb-3" width="96" height="96" />
+            <div class="brand display-font fs-3">Angelicum Store</div>
+            <div class="motto mt-2">Caritas · Justitia · Fortitudo</div>
+        </div>
+    </div>
+
+    <header>
+        <nav class="navbar navbar-expand-lg ac-navbar sticky-top" aria-label="Main navigation">
+            <div class="container">
+                <a class="navbar-brand d-flex align-items-center gap-2" asp-controller="Home" asp-action="Index">
+                    <img src="@Url.Content(logo)" alt="UST Angelicum College logo" class="ac-logo" />
+                    <span class="brand">Angelicum Store<small>UST Angelicum College</small></span>
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                        aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="mainNav">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index"><i class="bi bi-shop me-1" aria-hidden="true"></i>Shop</a></li>
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <li class="nav-item"><a class="nav-link @Active("Orders")" asp-controller="Orders" asp-action="Index"><i class="bi bi-receipt me-1" aria-hidden="true"></i>@(User.IsAdmin() ? "All orders" : "My orders")</a></li>
+                        }
+                        @if (User.IsAdmin())
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle @Active("Admin")" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-gear me-1" aria-hidden="true"></i>Admin
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" asp-controller="Admin" asp-action="Products"><i class="bi bi-tags me-2" aria-hidden="true"></i>Products</a></li>
+                                    <li><a class="dropdown-item" asp-controller="Admin" asp-action="Stock"><i class="bi bi-box-seam me-2" aria-hidden="true"></i>Stock</a></li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li><a class="dropdown-item" asp-controller="Admin" asp-action="Chaos"><i class="bi bi-lightning-charge me-2" aria-hidden="true"></i>Chaos &amp; Saga Testing</a></li>
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm theme-toggle" data-theme-toggle aria-label="Switch theme" aria-pressed="false">
+                            <i class="bi bi-moon-stars-fill" data-theme-icon aria-hidden="true"></i>
+                        </button>
+                        <a class="btn btn-outline-primary btn-sm position-relative @Active("Cart")" asp-controller="Cart" asp-action="Index" aria-label="Cart, @cartCount items">
+                            <i class="bi bi-bag" aria-hidden="true"></i><span class="d-none d-sm-inline ms-1">Cart</span>
+                            @if (cartCount > 0)
+                            {
+                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill cart-badge">@cartCount</span>
+                            }
+                        </a>
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <div class="dropdown">
+                                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-person-circle me-1" aria-hidden="true"></i>@User.DisplayName()
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><span class="dropdown-item-text small text-muted">Signed in as @(User.IsAdmin() ? "Admin" : "Customer")</span></li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li>
+                                        <form asp-controller="Account" asp-action="Logout" method="post">
+                                            <button type="submit" class="dropdown-item"><i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>Sign out</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
+                        }
+                        else
+                        {
+                            <a class="btn btn-primary btn-sm" asp-controller="Account" asp-action="Login"><i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>Sign in</a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+    @if (toast is { } t2)
+    {
+        <span hidden data-toast-message="@t2.Message" data-toast-kind="@t2.Kind"></span>
+    }
+
+    <main id="main" class="container py-4 page-enter" tabindex="-1">
+        @RenderBody()
+    </main>
+
+    <footer class="ac-footer mt-5 py-4">
+        <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 small">
+            <span>© 2026 UST Angelicum College • Caritas • Justitia • Fortitudo</span>
+            <span class="opacity-75">Angelicum Store · Store Platform Capstone</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

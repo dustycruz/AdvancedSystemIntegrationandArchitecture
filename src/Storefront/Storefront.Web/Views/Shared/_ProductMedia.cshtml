@@ -1,0 +1,11 @@
+@model ProductResponse
+<div class="product-media">
+    @if (!string.IsNullOrWhiteSpace(Model.ImageUrl))
+    {
+        <img src="@Model.ImageUrl" alt="@Model.Name" loading="lazy" />
+    }
+    else
+    {
+        <i class="bi @Display.ProductIcon(Model.Sku)" aria-hidden="true"></i>
+    }
+</div>

@@ -1,0 +1,17 @@
+@model ProductCard
+@if (Model.Available is null)
+{
+    <span class="badge text-bg-secondary">Availability unknown</span>
+}
+else if (Model.Available <= 0)
+{
+    <span class="badge badge-out"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>Out of stock</span>
+}
+else if (Model.LowStock)
+{
+    <span class="badge badge-low"><i class="bi bi-hourglass-split me-1" aria-hidden="true"></i>Only @Model.Available left</span>
+}
+else
+{
+    <span class="badge badge-stock"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>In stock</span>
+}
